@@ -1,7 +1,14 @@
 language: go
 go:
-  - "1.10"
-
-before_install:                                                                 
- - curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh  
- - dep ensure
+- '1.10'
+before_install:
+- curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
+- dep ensure
+script: go build -o scrap .
+deploy:
+  provider: releases
+  api_key:
+    secure: P8x7yDKAgZY1o6CmWV2XH/JEmlaMHs5TBugq5BIIgI7xEsowNMNhGNceek/cLtHdcc2JrY5r6IhN52pCNtGn23zwKwCMdk0L1I5ExVZSPwPRF53IsN6qJ5FdjbZ0SgwWDf2NDcAlE2Be41C9FiwkSWv02WWWpidFoe31wPYSx0qioXl8vPGt5gw1OodSY18L9gmwBjKXCuahdVYYKcRRiFb9yVhvxnrYE5oqgCXLmN0kaSNm6VtFPEYEeJSAjqvNNMadT5SAZZvzXTAOsC1il0qRKCDF6wQk6Sakn3zy5fc0//auImcPZyTyl4ygalyJnraowK5Q68BDGgeFpy/F/3JB3T7Eb1xCpjVETgUhfucq3jKa7BUhHUVfYkxAqLwuMoT+Jb4Duf/7nRWBCqcDmVPH7ydQDnzwTYV0bUc3haZeOj9IkdEAcbWw+kADU7gGQ6am5h/h5Xqm6dBx28LFEJ9W1902DaIIpr1eo67ZdnDgt6DQlRNMDc7NQ+0Vam2Y1aJlVQodxiBGtwx+PYVX5RTwH7MUA4mbU2DdXLHEMyOn7HXzrMfvfU/poY2F49F8UbqJRTAoTWsGv8Ge/B5EGR1SkzQgY1+LRtGr/j8ArOftuDtEEH4TP8eyFQggsfWRhyjAnSCsnQTLw54bGu/snS+G1g34agcAK84u99OI7jE=
+  file: scrap
+  on:
+    repo: garnaud/hackathon-2018
