@@ -76,6 +76,9 @@ func main() {
 		e.ForEach("cite", func(pos int, elt *colly.HTMLElement) {
 			fmt.Printf("%d - %+v\n", pos, elt.Text)
 			domain := "unparseable"
+			if !strings.HasPrefix(elt.Text, "http") {
+				elt.Text = "http://" + elt.Text
+			}
 			Url, err := url.Parse(elt.Text)
 			if err == nil {
 				domain = Url.Hostname()
@@ -99,7 +102,10 @@ func main() {
 			annonceElt := e.DOM.Parent().Find("cite").First()
 			fmt.Printf("==> annonce found: %+v\n", annonceElt.Text())
 			domain := "unparseable"
-			Url, err := url.Parse(annonceElt.Text())
+			if !strings.HasPrefix(annonceElt.Text(), "http") {
+				annonceElt.SetText("http://" + annonceElt.Text())
+			}
+			Url, err := url.ParseRequestURI(annonceElt.Text())
 			if err == nil {
 				domain = Url.Hostname()
 			}
