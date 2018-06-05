@@ -71,6 +71,12 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/marpaia/graphite-golang"
+  packages = ["."]
+  revision = "134b9af18cf31f936ebddbd11c03eead4d501601"
+
+[[projects]]
+  branch = "master"
   name = "github.com/saintfish/chardet"
   packages = ["."]
   revision = "3af4cd4741ca4f3eb0c407c034571a6fb0ea529c"
@@ -136,6 +142,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "ba4a2a5618ad9541f04087997fcefc2ee9ff9613cadd7dd9d6a6ae496fcb052d"
+  inputs-digest = "22f6139bd62e2ac0ea96e6608c96fa17747d2b1cfd4a04bf42bc83b5fd408ae7"
   solver-name = "gps-cdcl"
   solver-version = 1
