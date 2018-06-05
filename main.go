@@ -1,17 +1,20 @@
 package main
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
-	"github.com/gocolly/colly"
-	"github.com/gocolly/colly/extensions"
-	"github.com/marpaia/graphite-golang"
-	"github.com/mssola/user_agent"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
+
+	"github.com/gocolly/colly"
+	"github.com/gocolly/colly/extensions"
+	"github.com/marpaia/graphite-golang"
+	"github.com/mssola/user_agent"
 )
 
 type GlobalResult struct {
@@ -25,17 +28,38 @@ type GlobalResult struct {
 	mutex          *sync.Mutex
 }
 
+type googleResult struct {
+	Position    int    `json:"position"`
+	CssSelector string `json:"cssSelector"`
+	Raw         string `json:"raw"`
+	Domain      string `json:"domain"`
+}
+
 func (gr *GlobalResult) addNaturals(googleResult googleResult) {
 	defer gr.mutex.Unlock()
 	gr.mutex.Lock()
 	gr.Naturals = append(gr.Naturals, googleResult)
 }
 
-type googleResult struct {
-	Position    int    `json:"position"`
-	CssSelector string `json:"cssSelector"`
-	Raw         string `json:"raw"`
-	Domain      string `json:"domain"`
+func (gr *GlobalResult) exportToCSV() error {
+	t := time.Now()
+	file, err := os.Create("result.csv")
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+	for _, value := range gr.AnnonceMethod1 {
+		domain := strings.Replace(value.Domain, ".", "_", -1)
+		row := []string{t.Format("20060102150405"), "DT.hackhaton.2018.adwords." + gr.Device + ".sea." + domain, strconv.Itoa(value.Position)}
+		fmt.Printf("write " + strings.Join(row, ";"))
+		if err := writer.Write(row); err != nil {
+			return err // let's return errors if necessary, rather than having a one-size-fits-all error handler
+		}
+	}
+	return nil
 }
 
 func main() {
@@ -173,15 +197,16 @@ func main() {
 		}
 		fmt.Println("Finished", r.Request.URL)
 
+		result.exportToCSV()
 		// send to graphite
-		Graphite, _ := graphite.NewGraphite("10.98.208.116", 52630)
+		// Graphite, _ := graphite.NewGraphite("10.98.208.116", 52630)
 		GraphiteNop := graphite.NewGraphiteNop("10.98.208.116", 52630)
 		for _, sea := range result.AnnonceMethod1 {
 			domain := strings.Replace(sea.Domain, ".", "_", -1)
 
-			if os.Getenv("MODE") == "prod" {
-				Graphite.SimpleSend("DT.hackhaton.2018.adwords."+result.Device+".sea."+domain, strconv.Itoa(sea.Position))
-			}
+			// if os.Getenv("MODE") == "prod" {
+			// 	Graphite.SimpleSend("DT.hackhaton.2018.adwords."+result.Device+".sea."+domain, strconv.Itoa(sea.Position))
+			// }
 			GraphiteNop.SimpleSend("DT.hackhaton.2018.adwords."+result.Device+".sea."+domain, strconv.Itoa(sea.Position))
 		}
 
@@ -193,9 +218,9 @@ func main() {
 				domains[seo.Domain] = seo.Position
 			}
 			domain := strings.Replace(seo.Domain, ".", "_", -1)
-			if os.Getenv("MODE") == "prod" {
-				Graphite.SimpleSend("DT.hackhaton.2018.adwords."+result.Device+".seo."+domain, strconv.Itoa(seo.Position))
-			}
+			// if os.Getenv("MODE") == "prod" {
+			// 	Graphite.SimpleSend("DT.hackhaton.2018.adwords."+result.Device+".seo."+domain, strconv.Itoa(seo.Position))
+			// }
 			GraphiteNop.SimpleSend("DT.hackhaton.2018.adwords."+result.Device+".seo."+domain, strconv.Itoa(seo.Position))
 		}
 	})
