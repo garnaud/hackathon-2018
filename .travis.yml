@@ -20,3 +20,13 @@ deploy:
   - scrap.exe
   on:
     repo: garnaud/hackathon-2018
+
+# blocklist
+# branches:
+#   except:
+#   - master
+
+# safelist
+branches:
+  only:
+  - /^build-.*$/
