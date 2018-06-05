@@ -54,7 +54,7 @@ func (gr *GlobalResult) exportToCSV() error {
 	for _, value := range gr.AnnonceMethod1 {
 		domain := strings.Replace(value.Domain, ".", "_", -1)
 		row := []string{t.Format("20060102150405"), "DT.hackhaton.2018.adwords." + gr.Device + ".sea." + domain, strconv.Itoa(value.Position)}
-		fmt.Printf("write " + strings.Join(row, ";"))
+		fmt.Printf("write -> " + strings.Join(row, ";"))
 		if err := writer.Write(row); err != nil {
 			return err // let's return errors if necessary, rather than having a one-size-fits-all error handler
 		}
