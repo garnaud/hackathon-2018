@@ -17,9 +17,10 @@ import (
 	"github.com/mssola/user_agent"
 )
 
+// GlobalResult is exported to be parsed by json
 type GlobalResult struct {
 	Keywords       string         `json:"keywords"`
-	Url            string         `json:"url"`
+	URL            string         `json:"url"`
 	UserAgent      string         `json:"userAgent"`
 	Device         string         `json:"mobile"`
 	Naturals       []googleResult `json:"naturals"`
@@ -30,7 +31,7 @@ type GlobalResult struct {
 
 type googleResult struct {
 	Position    int    `json:"position"`
-	CssSelector string `json:"cssSelector"`
+	CSSSelector string `json:"cssSelector"`
 	Raw         string `json:"raw"`
 	Domain      string `json:"domain"`
 }
@@ -71,18 +72,18 @@ func main() {
 		mutex:          &sync.Mutex{},
 	}
 	// init
-	pos_nat, pos_adwords := -1, -1
+	posNat, posAdwords := -1, -1
 	defer func() {
-		if pos_adwords == -1 {
+		if posAdwords == -1 {
 			fmt.Println("pas de résultat acheté pour oui.sncf")
 		}
-		if pos_nat == -1 {
+		if posNat == -1 {
 			fmt.Println("pas de résultat naturel trouvé pour oui.sncf")
 		}
-		if pos_nat <= pos_adwords && pos_nat > -1 {
+		if posNat <= posAdwords && posNat > -1 {
 			fmt.Println("référencement naturel est meilleur ou égal que le résultat adword")
 		}
-		if pos_nat > pos_adwords && pos_adwords > -1 {
+		if posNat > posAdwords && posAdwords > -1 {
 			fmt.Println("résultat adword est meilleur que le référencement naturel")
 		}
 	}()
@@ -107,19 +108,19 @@ func main() {
 			if !strings.HasPrefix(elt.Text, "http") {
 				elt.Text = "http://" + elt.Text
 			}
-			Url, err := url.Parse(elt.Text)
+			URL, err := url.Parse(elt.Text)
 			if err == nil {
-				domain = Url.Hostname()
+				domain = URL.Hostname()
 			}
 			googleResult := googleResult{
 				Position:    pos,
-				CssSelector: "div[id=tvcap]",
+				CSSSelector: "div[id=tvcap]",
 				Raw:         elt.Text,
 				Domain:      domain,
 			}
 			result.AnnonceMethod1 = append(result.AnnonceMethod1, googleResult)
 			if strings.Contains(elt.Text, "oui.sncf") {
-				pos_adwords = pos
+				posAdwords = pos
 			}
 		})
 	})
@@ -133,13 +134,13 @@ func main() {
 			if !strings.HasPrefix(annonceElt.Text(), "http") {
 				annonceElt.SetText("http://" + annonceElt.Text())
 			}
-			Url, err := url.ParseRequestURI(annonceElt.Text())
+			URL, err := url.ParseRequestURI(annonceElt.Text())
 			if err == nil {
-				domain = Url.Hostname()
+				domain = URL.Hostname()
 			}
 			googleResult := googleResult{
 				Position:    -1,
-				CssSelector: "span",
+				CSSSelector: "span",
 				Raw:         annonceElt.Text(),
 				Domain:      domain,
 			}
@@ -155,19 +156,19 @@ func main() {
 			if link, exists := elt.DOM.Find("a").First().Attr("href"); exists {
 				fmt.Printf("%d - %+v\n", pos, link)
 				domain := "unparseable"
-				Url, err := url.Parse(link)
+				URL, err := url.Parse(link)
 				if err == nil {
-					domain = Url.Hostname()
+					domain = URL.Hostname()
 				}
 				googleResult := googleResult{
 					Position:    pos,
-					CssSelector: "div[id=ires]",
+					CSSSelector: "div[id=ires]",
 					Raw:         link,
 					Domain:      domain,
 				}
 				result.addNaturals(googleResult)
 				if strings.Contains(link, "oui.sncf") {
-					pos_nat = pos
+					posNat = pos
 				}
 			}
 		})
@@ -184,7 +185,7 @@ func main() {
 		} else {
 			result.Device = "desktop"
 		}
-		result.Url = r.URL.String()
+		result.URL = r.URL.String()
 		result.UserAgent = r.Headers.Get("User-Agent")
 	})
 
@@ -234,18 +235,18 @@ func main() {
 	})
 
 	// build the request
-	var Url *url.URL
-	Url, err := url.Parse("http://www.google.com")
+	var URL *url.URL
+	URL, err := url.Parse("http://www.google.com")
 	if err != nil {
 		panic("boom")
 	}
-	Url.Path += "/search"
+	URL.Path += "/search"
 	parameters := url.Values{}
 	parameters.Add("q", keywords)
-	Url.RawQuery = parameters.Encode()
-	fmt.Printf("url: %+v\n", Url.String())
+	URL.RawQuery = parameters.Encode()
+	fmt.Printf("url: %+v\n", URL.String())
 
-	if err := c.Visit(Url.String()); err != nil {
+	if err := c.Visit(URL.String()); err != nil {
 		panic(err)
 	}
 }
