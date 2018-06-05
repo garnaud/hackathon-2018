@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/csv"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand"
 	"net/url"
@@ -20,14 +20,26 @@ import (
 
 // GlobalResult is exported to be parsed by json
 type GlobalResult struct {
-	Keywords       string         `json:"keywords"`
-	URL            string         `json:"url"`
-	UserAgent      string         `json:"userAgent"`
-	Device         string         `json:"mobile"`
-	Naturals       []googleResult `json:"naturals"`
-	AnnonceMethod1 []googleResult `json:"annonceMethod1"`
-	AnnonceMethod2 []googleResult `json:"annonceMethod2"`
-	mutex          *sync.Mutex
+	Keywords  string         `json:"keywords"`
+	URL       string         `json:"url"`
+	UserAgent string         `json:"userAgent"`
+	Device    string         `json:"mobile"`
+	SEO       []googleResult `json:"naturals"`
+	SEA       []googleResult `json:"annonceMethod2"`
+	mutex     *sync.Mutex
+}
+
+func (gr GlobalResult) Print() {
+	fmt.Println("results:")
+	fmt.Printf("keywords: %s, url: %s, device: %s, user agent: %s\n", gr.Keywords, gr.URL, gr.Device, gr.UserAgent)
+	fmt.Println("sea:")
+	for _, sea := range gr.SEA {
+		fmt.Printf("%d - %s - %s\n", sea.Position, sea.Domain, sea.Raw)
+	}
+	fmt.Println("seo:")
+	for _, seo := range gr.SEO {
+		fmt.Printf("%d - %s - %s\n", seo.Position, seo.Domain, seo.Raw)
+	}
 }
 
 type googleResult struct {
@@ -35,12 +47,6 @@ type googleResult struct {
 	CSSSelector string `json:"cssSelector"`
 	Raw         string `json:"raw"`
 	Domain      string `json:"domain"`
-}
-
-func (gr *GlobalResult) addNaturals(googleResult googleResult) {
-	defer gr.mutex.Unlock()
-	gr.mutex.Lock()
-	gr.Naturals = append(gr.Naturals, googleResult)
 }
 
 func (gr *GlobalResult) exportToCSV() error {
@@ -53,7 +59,7 @@ func (gr *GlobalResult) exportToCSV() error {
 
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
-	for _, value := range gr.AnnonceMethod1 {
+	for _, value := range gr.SEA {
 		domain := strings.Replace(value.Domain, ".", "_", -1)
 		row := []string{t.Format("20060102150405"), "DT.hackhaton.2018.adwords." + gr.Device + ".sea." + domain, strconv.Itoa(value.Position)}
 		fmt.Printf("write -> " + strings.Join(row, ";") + "\n")
@@ -67,27 +73,10 @@ func (gr *GlobalResult) exportToCSV() error {
 func main() {
 	// TODO constructor
 	result := &GlobalResult{
-		Naturals:       make([]googleResult, 0),
-		AnnonceMethod1: make([]googleResult, 0),
-		AnnonceMethod2: make([]googleResult, 0),
-		mutex:          &sync.Mutex{},
+		SEO:   make([]googleResult, 0),
+		SEA:   make([]googleResult, 0),
+		mutex: &sync.Mutex{},
 	}
-	// init
-	posNat, posAdwords := -1, -1
-	defer func() {
-		if posAdwords == -1 {
-			fmt.Println("pas de résultat acheté pour oui.sncf")
-		}
-		if posNat == -1 {
-			fmt.Println("pas de résultat naturel trouvé pour oui.sncf")
-		}
-		if posNat <= posAdwords && posNat > -1 {
-			fmt.Println("référencement naturel est meilleur ou égal que le résultat adword")
-		}
-		if posNat > posAdwords && posAdwords > -1 {
-			fmt.Println("résultat adword est meilleur que le référencement naturel")
-		}
-	}()
 
 	// args
 	keywords := os.Args[1]
@@ -104,37 +93,9 @@ func main() {
 	c := colly.NewCollector(
 		colly.AllowedDomains("google.com", "www.google.com"),
 		colly.UserAgent(userAgent),
-	//	colly.UserAgent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.139 Safari/537.36"),
 	)
-	//	extensions.RandomUserAgent(c)
 
-	// handler for retrieving annonces from method1
-	c.OnHTML("div[id=tvcap]", func(e *colly.HTMLElement) {
-		fmt.Printf("Annonces found with method1: %q %s\n", e.Attr("id"), e.Attr("class"))
-		e.ForEach("cite", func(pos int, elt *colly.HTMLElement) {
-			fmt.Printf("%d - %+v\n", pos, elt.Text)
-			domain := "unparseable"
-			if !strings.HasPrefix(elt.Text, "http") {
-				elt.Text = "http://" + elt.Text
-			}
-			URL, err := url.Parse(elt.Text)
-			if err == nil {
-				domain = URL.Hostname()
-			}
-			googleResult := googleResult{
-				Position:    pos,
-				CSSSelector: "div[id=tvcap]",
-				Raw:         elt.Text,
-				Domain:      domain,
-			}
-			result.AnnonceMethod1 = append(result.AnnonceMethod1, googleResult)
-			if strings.Contains(elt.Text, "oui.sncf") {
-				posAdwords = pos
-			}
-		})
-	})
-
-	// handler for retrieving annonces from method2
+	// handler for retrieving SEA links
 	c.OnHTML("body", func(body *colly.HTMLElement) {
 
 		pos := -1
@@ -156,7 +117,7 @@ func main() {
 							Raw:         sibling.Text(),
 							Domain:      URL.Hostname(),
 						}
-						result.AnnonceMethod2 = append(result.AnnonceMethod2, googleResult)
+						result.SEA = append(result.SEA, googleResult)
 						found = true
 						return false
 					}
@@ -169,7 +130,7 @@ func main() {
 						Raw:         "not found",
 						Domain:      "unparseable",
 					}
-					result.AnnonceMethod2 = append(result.AnnonceMethod2, googleResult)
+					result.SEA = append(result.SEA, googleResult)
 				}
 			}
 		})
@@ -177,7 +138,6 @@ func main() {
 
 	// handler for retrieving natural result
 	c.OnHTML("div[id=ires]", func(div *colly.HTMLElement) {
-		fmt.Printf("Natural found: %q %s\n", div.Attr("id"), div.Attr("class"))
 		pos := -1
 		span := "cite" // <span> or <cite> which contains found link by SEO
 		if result.Device == "mobile" {
@@ -198,7 +158,7 @@ func main() {
 					Raw:         span.Text,
 					Domain:      URL.Hostname(),
 				}
-				result.addNaturals(googleResult)
+				result.SEO = append(result.SEO, googleResult)
 			} else {
 				fmt.Errorf("can't parse span url %s\n:%v\n", span.Text, err)
 			}
@@ -209,39 +169,42 @@ func main() {
 	c.OnRequest(func(r *colly.Request) {
 		fmt.Println("Request: ", r.URL.String())
 		userAgent := r.Headers.Get("User-Agent")
-		fmt.Println("User agent: ", userAgent)
 		ua := user_agent.New(userAgent)
 		if ua.Mobile() {
+			if os.Getenv("DEVICE") != "mobile" {
+				panic(errors.New("get a user agent mobile but script is not configured for a mobile (sytem environment variable DEVICE!='mobile'. user agent: " + userAgent))
+			}
 			result.Device = "mobile"
 		} else {
 			result.Device = "desktop"
+			if os.Getenv("DEVICE") == "mobile" {
+				panic(errors.New("get a user agent desktop but script is configured for a mobile (sytem environment variable DEVICE=='mobile'. user agent: " + userAgent))
+			}
 		}
 		result.URL = r.URL.String()
-		result.UserAgent = r.Headers.Get("User-Agent")
+		result.UserAgent = userAgent
 	})
 
 	// after the end of scrapping
 	c.OnScraped(func(r *colly.Response) {
+		result.Print()
 
-		prettyResult, err := json.MarshalIndent(result, "", "  ")
-		if err == nil {
-			fmt.Printf("result:\n%+v\n", string(prettyResult))
-		}
-		fmt.Println("Finished", r.Request.URL)
-
+		// export to local file csv
 		result.exportToCSV()
+
 		// send to graphite
+		fmt.Println("metrics sent to graphite")
 		Graphite, _ := graphite.NewGraphite("10.98.208.116", 52630)
 		GraphiteNop := graphite.NewGraphiteNop("10.98.208.116", 52630)
 
 		if os.Getenv("MODE") == "prod" {
-			Graphite.SimpleSend("DT.hackhaton.2018.adwords.sea.count", strconv.Itoa(len(result.AnnonceMethod1)))
-			Graphite.SimpleSend("DT.hackhaton.2018.adwords.seo.count", strconv.Itoa(len(result.Naturals)))
+			Graphite.SimpleSend("DT.hackhaton.2018.adwords."+result.Device+".sea.count", strconv.Itoa(len(result.SEA)))
+			Graphite.SimpleSend("DT.hackhaton.2018.adwords."+result.Device+".seo.count", strconv.Itoa(len(result.SEO)))
 		}
-		GraphiteNop.SimpleSend("DT.hackhaton.2018.adwords.sea.count", strconv.Itoa(len(result.AnnonceMethod1)))
-		GraphiteNop.SimpleSend("DT.hackhaton.2018.adwords.seo.count", strconv.Itoa(len(result.Naturals)))
+		GraphiteNop.SimpleSend("DT.hackhaton.2018.adwords."+result.Device+".sea.count", strconv.Itoa(len(result.SEA)))
+		GraphiteNop.SimpleSend("DT.hackhaton.2018.adwords."+result.Device+".seo.count", strconv.Itoa(len(result.SEO)))
 
-		for _, sea := range result.AnnonceMethod1 {
+		for _, sea := range result.SEA {
 			domain := strings.Replace(sea.Domain, ".", "_", -1)
 
 			if os.Getenv("MODE") == "prod" {
@@ -251,7 +214,7 @@ func main() {
 		}
 
 		domains := make(map[string]int)
-		for _, seo := range result.Naturals {
+		for _, seo := range result.SEO {
 			if _, ok := domains[seo.Domain]; ok {
 				continue
 			} else {
@@ -263,6 +226,7 @@ func main() {
 			}
 			GraphiteNop.SimpleSend("DT.hackhaton.2018.adwords."+result.Device+".seo."+domain, strconv.Itoa(seo.Position))
 		}
+		fmt.Println("Finished", r.Request.URL)
 	})
 
 	// build the request
@@ -283,7 +247,7 @@ func main() {
 }
 
 var osMobileStrings = []string{
-	/*"Mozilla/5.0 (iPhone; CPU iPhone OS 10_3_1 like Mac OS X) AppleWebKit/603.1.30 (KHTML, like Gecko) Version/10.0 Mobile/14E304 Safari/602.1",
+	"Mozilla/5.0 (iPhone; CPU iPhone OS 10_3_1 like Mac OS X) AppleWebKit/603.1.30 (KHTML, like Gecko) Version/10.0 Mobile/14E304 Safari/602.1",
 	"Mozilla/5.0 (iPhone; CPU iPhone OS 10_3_1 like Mac OS X) AppleWebKit/603.1.30 (KHTML, like Gecko) Version/10.0 Mobile/14E304 Safari/602.1",
 	"Mozilla/5.0 (iPhone; CPU iPhone OS 10_3_1 like Mac OS X) AppleWebKit/603.1.30 (KHTML, like Gecko) Version/10.0 Mobile/14E304 Safari/602.1",
 	"Mozilla/5.0 (Linux; U; Android 4.4.2; en-us; SCH-I535 Build/KOT49H) AppleWebKit/534.30 (KHTML, like Gecko) Version/4.0 Mobile Safari/534.30",
@@ -291,23 +255,22 @@ var osMobileStrings = []string{
 	"Mozilla/5.0 (Android 7.0; Mobile; rv:54.0) Gecko/54.0 Firefox/54.0",
 	"Mozilla/5.0 (Android 7.0; Mobile; rv:54.0) Gecko/54.0 Firefox/54.0",
 	"Mozilla/5.0 (Android 7.0; Mobile; rv:54.0) Gecko/54.0 Firefox/54.0",
-	"Mozilla/5.0 (Linux; Android 7.0; SAMSUNG SM-G955U Build/NRD90M) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/5.4 Chrome/51.0.2704.106 Mobile Safari/537.36",*/
-	"Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.181 Mobile Safari/537.36",
+	"Mozilla/5.0 (Linux; Android 7.0; SAMSUNG SM-G955U Build/NRD90M) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/5.4 Chrome/51.0.2704.106 Mobile Safari/537.36",
 	"Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.181 Mobile Safari/537.36",
 }
 
 var osDesktopStrings = []string{
 	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.181 Safari/537.3",
-	/*	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10; rv:65.0.3325.146) Gecko/20100101 Firefox/65.0.3325.146",
-		"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.146 Safari/537.36",
-		"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.146 Safari/537.36",
-		"Mozilla/5.0 (Windows NT 10.0; rv:65.0.3325.146) Gecko/20100101 Firefox/65.0.3325.146",
-		"Mozilla/5.0 (Windows NT 5.1; rv:65.0.3325.146) Gecko/20100101 Firefox/65.0.3325.146",
-		"Mozilla/5.0 (Windows NT 6.1; WOW64; rv:65.0.3325.146) Gecko/20100101 Firefox/65.0.3325.146",
-		"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.146 Safari/537.36",
-		"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.146 Safari/537.36",
-		"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.146 Safari/537.36",
-		"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.146 Safari/537.36",*/
+	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10; rv:65.0.3325.146) Gecko/20100101 Firefox/65.0.3325.146",
+	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.146 Safari/537.36",
+	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.146 Safari/537.36",
+	"Mozilla/5.0 (Windows NT 10.0; rv:65.0.3325.146) Gecko/20100101 Firefox/65.0.3325.146",
+	"Mozilla/5.0 (Windows NT 5.1; rv:65.0.3325.146) Gecko/20100101 Firefox/65.0.3325.146",
+	"Mozilla/5.0 (Windows NT 6.1; WOW64; rv:65.0.3325.146) Gecko/20100101 Firefox/65.0.3325.146",
+	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.146 Safari/537.36",
+	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.146 Safari/537.36",
+	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.146 Safari/537.36",
+	"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.146 Safari/537.36",
 }
 
 func randDesktop() string {
