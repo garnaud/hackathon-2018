@@ -29,4 +29,4 @@ deploy:
 # safelist
 branches:
   only:
-  - /^build-.*$/
+  - /^v\d+\.\d+(\.\d+)?(-\S*)?$/ # ex v1.9.5
