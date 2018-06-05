@@ -166,14 +166,23 @@ func main() {
 
 		// send to graphite
 		Graphite, _ := graphite.NewGraphite("10.98.208.116", 52630)
+		GraphiteNop := graphite.NewGraphiteNop("10.98.208.116", 52630)
 		for _, sea := range result.AnnonceMethod1 {
 			domain := strings.Replace(sea.Domain, ".", "_", -1)
 			Graphite.SimpleSend("DT.hackhaton.2018.adwords.sea."+domain, strconv.Itoa(sea.Position))
+			GraphiteNop.SimpleSend("DT.hackhaton.2018.adwords.sea."+domain, strconv.Itoa(sea.Position))
 		}
 
+		domains := make(map[string]int)
 		for _, seo := range result.Naturals {
+			if _, ok := domains[seo.Domain]; ok {
+				continue
+			} else {
+				domains[seo.Domain] = seo.Position
+			}
 			domain := strings.Replace(seo.Domain, ".", "_", -1)
 			Graphite.SimpleSend("DT.hackhaton.2018.adwords.seo."+domain, strconv.Itoa(seo.Position))
+			GraphiteNop.SimpleSend("DT.hackhaton.2018.adwords.seo."+domain, strconv.Itoa(seo.Position))
 		}
 	})
 
