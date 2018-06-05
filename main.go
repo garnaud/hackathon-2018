@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"github.com/gocolly/colly"
 	"github.com/gocolly/colly/extensions"
+	"github.com/marpaia/graphite-golang"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -153,13 +155,26 @@ func main() {
 		result.UserAgent = r.Headers.Get("User-Agent")
 	})
 
-	//
+	// after the end of scrapping
 	c.OnScraped(func(r *colly.Response) {
+
 		prettyResult, err := json.MarshalIndent(result, "", "  ")
 		if err == nil {
 			fmt.Printf("result:\n%+v\n", string(prettyResult))
 		}
 		fmt.Println("Finished", r.Request.URL)
+
+		// send to graphite
+		Graphite, _ := graphite.NewGraphite("10.98.208.116", 52630)
+		for _, sea := range result.AnnonceMethod1 {
+			domain := strings.Replace(sea.Domain, ".", "_", -1)
+			Graphite.SimpleSend("DT.hackhaton.2018.adwords.sea."+domain, strconv.Itoa(sea.Position))
+		}
+
+		for _, seo := range result.Naturals {
+			domain := strings.Replace(seo.Domain, ".", "_", -1)
+			Graphite.SimpleSend("DT.hackhaton.2018.adwords.seo."+domain, strconv.Itoa(seo.Position))
+		}
 	})
 
 	// build the request
