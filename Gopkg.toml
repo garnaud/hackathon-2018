@@ -36,3 +36,7 @@
 [[constraint]]
   name = "github.com/mssola/user_agent"
   version = "0.4.1"
+
+[[constraint]]
+  name = "github.com/PuerkitoBio/goquery"
+  version = "1.4.0"
