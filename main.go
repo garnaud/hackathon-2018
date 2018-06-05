@@ -54,7 +54,7 @@ func (gr *GlobalResult) exportToCSV() error {
 	for _, value := range gr.AnnonceMethod1 {
 		domain := strings.Replace(value.Domain, ".", "_", -1)
 		row := []string{t.Format("20060102150405"), "DT.hackhaton.2018.adwords." + gr.Device + ".sea." + domain, strconv.Itoa(value.Position)}
-		fmt.Printf("write -> " + strings.Join(row, ";"))
+		fmt.Printf("write -> " + strings.Join(row, ";") + "\n")
 		if err := writer.Write(row); err != nil {
 			return err // let's return errors if necessary, rather than having a one-size-fits-all error handler
 		}
@@ -199,14 +199,22 @@ func main() {
 
 		result.exportToCSV()
 		// send to graphite
-		// Graphite, _ := graphite.NewGraphite("10.98.208.116", 52630)
+		Graphite, _ := graphite.NewGraphite("10.98.208.116", 52630)
 		GraphiteNop := graphite.NewGraphiteNop("10.98.208.116", 52630)
+
+		if os.Getenv("MODE") == "prod" {
+			Graphite.SimpleSend("DT.hackhaton.2018.adwords.sea.count", strconv.Itoa(len(result.AnnonceMethod1)))
+			Graphite.SimpleSend("DT.hackhaton.2018.adwords.seo.count", strconv.Itoa(len(result.Naturals)))
+		}
+		GraphiteNop.SimpleSend("DT.hackhaton.2018.adwords.sea.count", strconv.Itoa(len(result.AnnonceMethod1)))
+		GraphiteNop.SimpleSend("DT.hackhaton.2018.adwords.seo.count", strconv.Itoa(len(result.Naturals)))
+
 		for _, sea := range result.AnnonceMethod1 {
 			domain := strings.Replace(sea.Domain, ".", "_", -1)
 
-			// if os.Getenv("MODE") == "prod" {
-			// 	Graphite.SimpleSend("DT.hackhaton.2018.adwords."+result.Device+".sea."+domain, strconv.Itoa(sea.Position))
-			// }
+			if os.Getenv("MODE") == "prod" {
+				Graphite.SimpleSend("DT.hackhaton.2018.adwords."+result.Device+".sea."+domain, strconv.Itoa(sea.Position))
+			}
 			GraphiteNop.SimpleSend("DT.hackhaton.2018.adwords."+result.Device+".sea."+domain, strconv.Itoa(sea.Position))
 		}
 
@@ -218,9 +226,9 @@ func main() {
 				domains[seo.Domain] = seo.Position
 			}
 			domain := strings.Replace(seo.Domain, ".", "_", -1)
-			// if os.Getenv("MODE") == "prod" {
-			// 	Graphite.SimpleSend("DT.hackhaton.2018.adwords."+result.Device+".seo."+domain, strconv.Itoa(seo.Position))
-			// }
+			if os.Getenv("MODE") == "prod" {
+				Graphite.SimpleSend("DT.hackhaton.2018.adwords."+result.Device+".seo."+domain, strconv.Itoa(seo.Position))
+			}
 			GraphiteNop.SimpleSend("DT.hackhaton.2018.adwords."+result.Device+".seo."+domain, strconv.Itoa(seo.Position))
 		}
 	})
