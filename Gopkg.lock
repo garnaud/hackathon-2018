@@ -76,6 +76,12 @@
   revision = "134b9af18cf31f936ebddbd11c03eead4d501601"
 
 [[projects]]
+  name = "github.com/mssola/user_agent"
+  packages = ["."]
+  revision = "85b2f5798558a46fc23443c596e781712f4b7792"
+  version = "v0.4.1"
+
+[[projects]]
   branch = "master"
   name = "github.com/saintfish/chardet"
   packages = ["."]
@@ -142,6 +148,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "22f6139bd62e2ac0ea96e6608c96fa17747d2b1cfd4a04bf42bc83b5fd408ae7"
+  inputs-digest = "48585d82999ef76d5c6516e6a922f5e584c80e2408fc627cf0a961b831a8e243"
   solver-name = "gps-cdcl"
   solver-version = 1

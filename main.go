@@ -6,6 +6,7 @@ import (
 	"github.com/gocolly/colly"
 	"github.com/gocolly/colly/extensions"
 	"github.com/marpaia/graphite-golang"
+	"github.com/mssola/user_agent"
 	"net/url"
 	"os"
 	"strconv"
@@ -17,6 +18,7 @@ type GlobalResult struct {
 	Keywords       string         `json:"keywords"`
 	Url            string         `json:"url"`
 	UserAgent      string         `json:"userAgent"`
+	Device         string         `json:"mobile"`
 	Naturals       []googleResult `json:"naturals"`
 	AnnonceMethod1 []googleResult `json:"annonceMethod1"`
 	AnnonceMethod2 []googleResult `json:"annonceMethod2"`
@@ -150,7 +152,14 @@ func main() {
 	// on request sent
 	c.OnRequest(func(r *colly.Request) {
 		fmt.Println("Request: ", r.URL.String())
-		fmt.Println("User agent: ", r.Headers.Get("User-Agent"))
+		userAgent := r.Headers.Get("User-Agent")
+		fmt.Println("User agent: ", userAgent)
+		ua := user_agent.New(userAgent)
+		if ua.Mobile() {
+			result.Device = "mobile"
+		} else {
+			result.Device = "desktop"
+		}
 		result.Url = r.URL.String()
 		result.UserAgent = r.Headers.Get("User-Agent")
 	})
@@ -169,8 +178,11 @@ func main() {
 		GraphiteNop := graphite.NewGraphiteNop("10.98.208.116", 52630)
 		for _, sea := range result.AnnonceMethod1 {
 			domain := strings.Replace(sea.Domain, ".", "_", -1)
-			Graphite.SimpleSend("DT.hackhaton.2018.adwords.sea."+domain, strconv.Itoa(sea.Position))
-			GraphiteNop.SimpleSend("DT.hackhaton.2018.adwords.sea."+domain, strconv.Itoa(sea.Position))
+
+			if os.Getenv("MODE") == "prod" {
+				Graphite.SimpleSend("DT.hackhaton.2018.adwords."+result.Device+".sea."+domain, strconv.Itoa(sea.Position))
+			}
+			GraphiteNop.SimpleSend("DT.hackhaton.2018.adwords."+result.Device+".sea."+domain, strconv.Itoa(sea.Position))
 		}
 
 		domains := make(map[string]int)
@@ -181,8 +193,10 @@ func main() {
 				domains[seo.Domain] = seo.Position
 			}
 			domain := strings.Replace(seo.Domain, ".", "_", -1)
-			Graphite.SimpleSend("DT.hackhaton.2018.adwords.seo."+domain, strconv.Itoa(seo.Position))
-			GraphiteNop.SimpleSend("DT.hackhaton.2018.adwords.seo."+domain, strconv.Itoa(seo.Position))
+			if os.Getenv("MODE") == "prod" {
+				Graphite.SimpleSend("DT.hackhaton.2018.adwords."+result.Device+".seo."+domain, strconv.Itoa(seo.Position))
+			}
+			GraphiteNop.SimpleSend("DT.hackhaton.2018.adwords."+result.Device+".seo."+domain, strconv.Itoa(seo.Position))
 		}
 	})
 
