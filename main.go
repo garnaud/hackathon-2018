@@ -189,28 +189,55 @@ func main() {
 	c.OnScraped(func(r *colly.Response) {
 		result.Print()
 
+		// compute spread
+		firstOccurenceSEA := -1
+		for _, sea := range result.SEA {
+			if sea.Domain == "www.oui.sncf" {
+				firstOccurenceSEA = sea.Position
+				break
+			}
+		}
+		firstOccurenceSEO := -1
+		firstOccurenceWWW_SNCF_COM := -1
+		for _, seo := range result.SEO {
+			if seo.Domain == "www.oui.sncf" && firstOccurenceSEO > -1 {
+				firstOccurenceSEO = seo.Position
+			}
+			if seo.Domain == "www.sncf.com" && firstOccurenceWWW_SNCF_COM > -1 {
+				firstOccurenceWWW_SNCF_COM = seo.Position
+			}
+		}
+		waste := "0"
+		if firstOccurenceSEA > -1 && firstOccurenceSEO > -1 {
+			if len(result.SEA)-firstOccurenceSEA-1+firstOccurenceSEO == 0 {
+				waste = "1"
+			}
+		}
+
 		// export to local file csv
 		result.exportToCSV()
 
 		// send to graphite
-		fmt.Println("metrics sent to graphite")
-		Graphite, _ := graphite.NewGraphite("10.98.208.116", 52630)
-		GraphiteNop := graphite.NewGraphiteNop("10.98.208.116", 52630)
+		fmt.Println("metrics sent to graphite (prefix: " + "DT.hackhaton.2018.adwords." + result.Device + "):")
+		Graphite, _ := graphite.NewGraphiteWithMetricPrefix("10.98.208.116", 52630, "DT.hackhaton.2018.adwords."+result.Device)
+		GraphiteNop, _ := graphite.GraphiteFactory("nop", "10.98.208.116", 52630, "DT.hackhaton.2018.adwords."+result.Device)
 
 		if os.Getenv("MODE") == "prod" {
-			Graphite.SimpleSend("DT.hackhaton.2018.adwords."+result.Device+".sea.count", strconv.Itoa(len(result.SEA)))
-			Graphite.SimpleSend("DT.hackhaton.2018.adwords."+result.Device+".seo.count", strconv.Itoa(len(result.SEO)))
+			Graphite.SimpleSend("sea.count", strconv.Itoa(len(result.SEA)))
+			Graphite.SimpleSend("seo.count", strconv.Itoa(len(result.SEO)))
+			Graphite.SimpleSend("waste", waste)
 		}
-		GraphiteNop.SimpleSend("DT.hackhaton.2018.adwords."+result.Device+".sea.count", strconv.Itoa(len(result.SEA)))
-		GraphiteNop.SimpleSend("DT.hackhaton.2018.adwords."+result.Device+".seo.count", strconv.Itoa(len(result.SEO)))
+		GraphiteNop.SimpleSend("sea.count", strconv.Itoa(len(result.SEA)))
+		GraphiteNop.SimpleSend("seo.count", strconv.Itoa(len(result.SEO)))
+		GraphiteNop.SimpleSend("waste", waste)
 
 		for _, sea := range result.SEA {
 			domain := strings.Replace(sea.Domain, ".", "_", -1)
 
 			if os.Getenv("MODE") == "prod" {
-				Graphite.SimpleSend("DT.hackhaton.2018.adwords."+result.Device+".sea."+domain, strconv.Itoa(sea.Position))
+				Graphite.SimpleSend("sea."+domain, strconv.Itoa(sea.Position))
 			}
-			GraphiteNop.SimpleSend("DT.hackhaton.2018.adwords."+result.Device+".sea."+domain, strconv.Itoa(sea.Position))
+			GraphiteNop.SimpleSend("sea."+domain, strconv.Itoa(sea.Position))
 		}
 
 		domains := make(map[string]int)
@@ -222,9 +249,9 @@ func main() {
 			}
 			domain := strings.Replace(seo.Domain, ".", "_", -1)
 			if os.Getenv("MODE") == "prod" {
-				Graphite.SimpleSend("DT.hackhaton.2018.adwords."+result.Device+".seo."+domain, strconv.Itoa(seo.Position))
+				Graphite.SimpleSend("seo."+domain, strconv.Itoa(seo.Position))
 			}
-			GraphiteNop.SimpleSend("DT.hackhaton.2018.adwords."+result.Device+".seo."+domain, strconv.Itoa(seo.Position))
+			GraphiteNop.SimpleSend("seo."+domain, strconv.Itoa(seo.Position))
 		}
 		fmt.Println("Finished", r.Request.URL)
 	})
