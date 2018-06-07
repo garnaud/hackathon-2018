@@ -189,7 +189,7 @@ func main() {
 	c.OnScraped(func(r *colly.Response) {
 		result.Print()
 
-		// compute spread
+		// looking for first occurence of oui.sncf in SEA and SEO parts
 		firstOccurenceSEA := -1
 		for _, sea := range result.SEA {
 			if sea.Domain == "www.oui.sncf" {
@@ -197,19 +197,31 @@ func main() {
 				break
 			}
 		}
-		firstOccurenceSEO := -1
-		firstOccurenceWWW_SNCF_COM := -1
+		firstOccurenceSEO := -1 // first occurence of oui.sncf in SEO part
+		occurenceSEO := 0       // occurence of oui.sncf or sncf.com for density computing
 		for _, seo := range result.SEO {
-			if seo.Domain == "www.oui.sncf" && firstOccurenceSEO > -1 {
-				firstOccurenceSEO = seo.Position
+			if seo.Domain == "www.oui.sncf" {
+				if firstOccurenceSEO == -1 {
+					firstOccurenceSEO = seo.Position
+				}
+				occurenceSEO = occurenceSEO + 1
 			}
-			if seo.Domain == "www.sncf.com" && firstOccurenceWWW_SNCF_COM > -1 {
-				firstOccurenceWWW_SNCF_COM = seo.Position
+			if seo.Domain == "www.sncf.com" {
+				occurenceSEO = occurenceSEO + 1
 			}
 		}
+
+		// compute waste (bidding is not necessary)
 		waste := "0"
 		if firstOccurenceSEA > -1 && firstOccurenceSEO > -1 {
-			if len(result.SEA)-firstOccurenceSEA-1+firstOccurenceSEO == 0 {
+			// oui.sncf is present in SEA and SEO
+			ouiSpace := len(result.SEA) - firstOccurenceSEA - 1 + firstOccurenceSEO
+			fmt.Printf("ouispace %d, len sea %d, sea %d, seo %d \n", ouiSpace, len(result.SEA), firstOccurenceSEA, firstOccurenceSEO)
+			if ouiSpace == 0 {
+				// there is no space between SEA position and SEO position for oui.sncf
+				waste = "1"
+			} else if ouiSpace == 1 && result.SEO[0].Domain == "www.sncf.com" {
+				// there is just "www.sncf.com" between SEA and SEO oui.sncf
 				waste = "1"
 			}
 		}
@@ -226,9 +238,11 @@ func main() {
 			Graphite.SimpleSend("sea.count", strconv.Itoa(len(result.SEA)))
 			Graphite.SimpleSend("seo.count", strconv.Itoa(len(result.SEO)))
 			Graphite.SimpleSend("waste", waste)
+			Graphite.SimpleSend("seo.density", strconv.FormatFloat(float64(occurenceSEO)/float64(len(result.SEO)), 'f', 1, 64))
 		}
 		GraphiteNop.SimpleSend("sea.count", strconv.Itoa(len(result.SEA)))
 		GraphiteNop.SimpleSend("seo.count", strconv.Itoa(len(result.SEO)))
+		GraphiteNop.SimpleSend("seo.density", strconv.FormatFloat(float64(occurenceSEO)/float64(len(result.SEO)), 'f', 1, 64))
 		GraphiteNop.SimpleSend("waste", waste)
 
 		for _, sea := range result.SEA {
