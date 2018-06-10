@@ -20,13 +20,15 @@ import (
 
 // GlobalResult is exported to be parsed by json
 type GlobalResult struct {
-	Keywords  string         `json:"keywords"`
-	URL       string         `json:"url"`
-	UserAgent string         `json:"userAgent"`
-	Device    string         `json:"mobile"`
-	SEO       []googleResult `json:"naturals"`
-	SEA       []googleResult `json:"annonceMethod2"`
-	mutex     *sync.Mutex
+	Keywords    string         `json:"keywords"`
+	URL         string         `json:"url"`
+	UserAgent   string         `json:"userAgent"`
+	Device      string         `json:"mobile"`
+	SEOOui      int            `json:"seoOui"`
+	SEOFirstOui int            `json:"seoFirstOui"`
+	SEO         []googleResult `json:"seo"`
+	SEA         []googleResult `json:"sea"`
+	mutex       *sync.Mutex
 }
 
 func (gr GlobalResult) Print() {
@@ -62,7 +64,6 @@ func (gr *GlobalResult) exportToCSV() error {
 	for _, value := range gr.SEA {
 		domain := strings.Replace(value.Domain, ".", "_", -1)
 		row := []string{t.Format("20060102150405"), "DT.hackhaton.2018.adwords." + gr.Device + ".sea." + domain, strconv.Itoa(value.Position)}
-		fmt.Printf("write -> " + strings.Join(row, ";") + "\n")
 		if err := writer.Write(row); err != nil {
 			return err // let's return errors if necessary, rather than having a one-size-fits-all error handler
 		}
@@ -70,17 +71,70 @@ func (gr *GlobalResult) exportToCSV() error {
 	return nil
 }
 
+type metrics struct {
+	graphite *graphite.Graphite
+	csv      *csv.Writer
+}
+
+func NewMetrics(result GlobalResult) metrics {
+	// init graphite
+	var g *graphite.Graphite
+	if os.Getenv("MODE") == "prod" {
+		g, _ = graphite.NewGraphiteWithMetricPrefix("10.98.208.116", 52630, "DT.hackhaton.2018.adwords."+result.Device)
+	} else {
+		g, _ = graphite.GraphiteFactory("nop", "10.98.208.116", 52630, "DT.hackhaton.2018.adwords."+result.Device)
+	}
+
+	// init csv file
+	var file *os.File
+	if _, err := os.Stat("result.csv"); os.IsNotExist(err) {
+		file, err = os.Create("result.csv")
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		file, err = os.OpenFile("result.csv", os.O_APPEND|os.O_WRONLY, 0600)
+		if err != nil {
+			panic(err)
+		}
+	}
+	return metrics{
+		graphite: g,
+		csv:      csv.NewWriter(file),
+	}
+}
+
+func (m *metrics) Close() {
+	// TODO
+}
+
+func (m *metrics) Send(metric string, value interface{}) {
+	t := time.Now()
+	// send to graphite
+	m.graphite.SimpleSend(metric, fmt.Sprintf("%v", value))
+	// send to csv
+	m.csv.Write([]string{t.Format("2006-01-02 15:04:05"), fmt.Sprintf("%d", (t.Unix())), metric, fmt.Sprintf("%v", value)})
+	m.csv.Flush()
+}
+
+// variables
+var met metrics
+
 func main() {
 	// TODO constructor
 	result := &GlobalResult{
-		SEO:   make([]googleResult, 0),
-		SEA:   make([]googleResult, 0),
-		mutex: &sync.Mutex{},
+		SEO:         make([]googleResult, 0),
+		SEA:         make([]googleResult, 0),
+		SEOFirstOui: -1,
+		SEOOui:      0,
+		mutex:       &sync.Mutex{},
 	}
 
 	// args
 	keywords := os.Args[1]
 	(*result).Keywords = keywords
+
+	fmt.Println("metrics sent to graphite (prefix: " + "DT.hackhaton.2018.adwords." + result.Device + "):")
 
 	// build colly scrapper
 	var userAgent string
@@ -95,6 +149,7 @@ func main() {
 		colly.UserAgent(userAgent),
 	)
 
+	met := NewMetrics(*result)
 	// handler for retrieving SEA links
 	c.OnHTML("body", func(body *colly.HTMLElement) {
 
@@ -136,7 +191,7 @@ func main() {
 		})
 	})
 
-	// handler for retrieving natural result
+	// handler for retrieving SEO result
 	c.OnHTML("div[id=ires]", func(div *colly.HTMLElement) {
 		pos := -1
 		span := "cite" // <span> or <cite> which contains found link by SEO
@@ -151,6 +206,15 @@ func main() {
 			URL, err := url.ParseRequestURI(split[0])
 			if err == nil {
 				pos = pos + 1
+
+				// monitor www.oui.sncf
+				if URL.Hostname() == "www.oui.sncf" {
+					result.SEOOui = result.SEOOui + 1
+					if result.SEOFirstOui < 0 {
+						result.SEOFirstOui = pos
+					}
+				}
+
 				// found not promoted domain (seo)
 				googleResult := googleResult{
 					Position:    pos,
@@ -197,26 +261,13 @@ func main() {
 				break
 			}
 		}
-		firstOccurenceSEO := -1 // first occurence of oui.sncf in SEO part
-		occurenceSEO := 0       // occurence of oui.sncf or sncf.com for density computing
-		for _, seo := range result.SEO {
-			if seo.Domain == "www.oui.sncf" {
-				if firstOccurenceSEO == -1 {
-					firstOccurenceSEO = seo.Position
-				}
-				occurenceSEO = occurenceSEO + 1
-			}
-			if seo.Domain == "www.sncf.com" {
-				occurenceSEO = occurenceSEO + 1
-			}
-		}
 
 		// compute waste (bidding is not necessary)
 		waste := "0"
-		if firstOccurenceSEA > -1 && firstOccurenceSEO > -1 {
+		if firstOccurenceSEA > -1 && result.SEOFirstOui > -1 {
 			// oui.sncf is present in SEA and SEO
-			ouiSpace := len(result.SEA) - firstOccurenceSEA - 1 + firstOccurenceSEO
-			fmt.Printf("ouispace %d, len sea %d, sea %d, seo %d \n", ouiSpace, len(result.SEA), firstOccurenceSEA, firstOccurenceSEO)
+			ouiSpace := len(result.SEA) - firstOccurenceSEA - 1 + result.SEOFirstOui
+			fmt.Printf("ouispace %d, len sea %d, sea %d, seo %d \n", ouiSpace, len(result.SEA), firstOccurenceSEA, result.SEOFirstOui)
 			if ouiSpace == 0 {
 				// there is no space between SEA position and SEO position for oui.sncf
 				waste = "1"
@@ -226,32 +277,15 @@ func main() {
 			}
 		}
 
-		// export to local file csv
-		result.exportToCSV()
-
 		// send to graphite
-		fmt.Println("metrics sent to graphite (prefix: " + "DT.hackhaton.2018.adwords." + result.Device + "):")
-		Graphite, _ := graphite.NewGraphiteWithMetricPrefix("10.98.208.116", 52630, "DT.hackhaton.2018.adwords."+result.Device)
-		GraphiteNop, _ := graphite.GraphiteFactory("nop", "10.98.208.116", 52630, "DT.hackhaton.2018.adwords."+result.Device)
-
-		if os.Getenv("MODE") == "prod" {
-			Graphite.SimpleSend("sea.count", strconv.Itoa(len(result.SEA)))
-			Graphite.SimpleSend("seo.count", strconv.Itoa(len(result.SEO)))
-			Graphite.SimpleSend("waste", waste)
-			Graphite.SimpleSend("seo.density", strconv.FormatFloat(float64(occurenceSEO)/float64(len(result.SEO)), 'f', 1, 64))
-		}
-		GraphiteNop.SimpleSend("sea.count", strconv.Itoa(len(result.SEA)))
-		GraphiteNop.SimpleSend("seo.count", strconv.Itoa(len(result.SEO)))
-		GraphiteNop.SimpleSend("seo.density", strconv.FormatFloat(float64(occurenceSEO)/float64(len(result.SEO)), 'f', 1, 64))
-		GraphiteNop.SimpleSend("waste", waste)
+		met.Send("sea.count", len(result.SEA))
+		met.Send("seo.count", len(result.SEO))
+		met.Send("waste", waste)
+		met.Send("seo.density", float64(result.SEOOui)/float64(len(result.SEO)))
 
 		for _, sea := range result.SEA {
 			domain := strings.Replace(sea.Domain, ".", "_", -1)
-
-			if os.Getenv("MODE") == "prod" {
-				Graphite.SimpleSend("sea."+domain, strconv.Itoa(sea.Position))
-			}
-			GraphiteNop.SimpleSend("sea."+domain, strconv.Itoa(sea.Position))
+			met.Send("sea."+domain, sea.Position)
 		}
 
 		domains := make(map[string]int)
@@ -262,10 +296,7 @@ func main() {
 				domains[seo.Domain] = seo.Position
 			}
 			domain := strings.Replace(seo.Domain, ".", "_", -1)
-			if os.Getenv("MODE") == "prod" {
-				Graphite.SimpleSend("seo."+domain, strconv.Itoa(seo.Position))
-			}
-			GraphiteNop.SimpleSend("seo."+domain, strconv.Itoa(seo.Position))
+			met.Send("seo."+domain, seo.Position)
 		}
 		fmt.Println("Finished", r.Request.URL)
 	})
