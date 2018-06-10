@@ -74,15 +74,16 @@ func (gr *GlobalResult) exportToCSV() error {
 type metrics struct {
 	graphite *graphite.Graphite
 	csv      *csv.Writer
+	prefix   string
 }
 
-func NewMetrics(result GlobalResult) metrics {
+func NewMetrics(prefix string) metrics {
 	// init graphite
 	var g *graphite.Graphite
 	if os.Getenv("MODE") == "prod" {
-		g, _ = graphite.NewGraphiteWithMetricPrefix("10.98.208.116", 52630, "DT.hackhaton.2018.adwords."+result.Device)
+		g, _ = graphite.NewGraphiteWithMetricPrefix("10.98.208.116", 52630, prefix)
 	} else {
-		g, _ = graphite.GraphiteFactory("nop", "10.98.208.116", 52630, "DT.hackhaton.2018.adwords."+result.Device)
+		g, _ = graphite.GraphiteFactory("nop", "10.98.208.116", 52630, prefix)
 	}
 
 	// init csv file
@@ -101,6 +102,7 @@ func NewMetrics(result GlobalResult) metrics {
 	return metrics{
 		graphite: g,
 		csv:      csv.NewWriter(file),
+		prefix:   prefix,
 	}
 }
 
@@ -113,7 +115,7 @@ func (m *metrics) Send(metric string, value interface{}) {
 	// send to graphite
 	m.graphite.SimpleSend(metric, fmt.Sprintf("%v", value))
 	// send to csv
-	m.csv.Write([]string{t.Format("2006-01-02 15:04:05"), fmt.Sprintf("%d", (t.Unix())), metric, fmt.Sprintf("%v", value)})
+	m.csv.Write([]string{t.Format("2006-01-02 15:04:05"), fmt.Sprintf("%d", (t.Unix())), fmt.Sprintf("%s.%s", m.prefix, metric), fmt.Sprintf("%v", value)})
 	m.csv.Flush()
 }
 
@@ -149,7 +151,6 @@ func main() {
 		colly.UserAgent(userAgent),
 	)
 
-	met := NewMetrics(*result)
 	// handler for retrieving SEA links
 	c.OnHTML("body", func(body *colly.HTMLElement) {
 
@@ -247,6 +248,7 @@ func main() {
 		}
 		result.URL = r.URL.String()
 		result.UserAgent = userAgent
+		met = NewMetrics("DT.hackhaton.2018.adwords." + result.Device)
 	})
 
 	// after the end of scrapping
