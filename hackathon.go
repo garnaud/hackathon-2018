@@ -1,4 +1,4 @@
-package main
+package hackathon
 
 import (
 	"encoding/csv"
@@ -7,7 +7,6 @@ import (
 	"math/rand"
 	"net/url"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -51,26 +50,6 @@ type googleResult struct {
 	Domain      string `json:"domain"`
 }
 
-func (gr *GlobalResult) exportToCSV() error {
-	t := time.Now()
-	file, err := os.Create("result.csv")
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
-	for _, value := range gr.SEA {
-		domain := strings.Replace(value.Domain, ".", "_", -1)
-		row := []string{t.Format("20060102150405"), "DT.hackhaton.2018.adwords." + gr.Device + ".sea." + domain, strconv.Itoa(value.Position)}
-		if err := writer.Write(row); err != nil {
-			return err // let's return errors if necessary, rather than having a one-size-fits-all error handler
-		}
-	}
-	return nil
-}
-
 type metrics struct {
 	graphite *graphite.Graphite
 	csv      *csv.Writer
@@ -86,17 +65,19 @@ func NewMetrics(prefix string) metrics {
 		g, _ = graphite.GraphiteFactory("nop", "10.98.208.116", 52630, prefix)
 	}
 
-	// init csv file
 	var file *os.File
-	if _, err := os.Stat("result.csv"); os.IsNotExist(err) {
-		file, err = os.Create("result.csv")
-		if err != nil {
-			panic(err)
-		}
-	} else {
-		file, err = os.OpenFile("result.csv", os.O_APPEND|os.O_WRONLY, 0600)
-		if err != nil {
-			panic(err)
+	if os.Getenv("DUMP") == "local" {
+		// init csv file
+		if _, err := os.Stat("result.csv"); os.IsNotExist(err) {
+			file, err = os.Create("result.csv")
+			if err != nil {
+				panic(err)
+			}
+		} else {
+			file, err = os.OpenFile("result.csv", os.O_APPEND|os.O_WRONLY, 0600)
+			if err != nil {
+				panic(err)
+			}
 		}
 	}
 	return metrics{
@@ -114,15 +95,17 @@ func (m *metrics) Send(metric string, value interface{}) {
 	t := time.Now()
 	// send to graphite
 	m.graphite.SimpleSend(metric, fmt.Sprintf("%v", value))
-	// send to csv
-	m.csv.Write([]string{t.Format("2006-01-02 15:04:05"), fmt.Sprintf("%d", (t.Unix())), fmt.Sprintf("%s.%s", m.prefix, metric), fmt.Sprintf("%v", value)})
-	m.csv.Flush()
+	if os.Getenv("DUMP") == "local" {
+		// send to csv
+		m.csv.Write([]string{t.Format("2006-01-02 15:04:05"), fmt.Sprintf("%d", (t.Unix())), fmt.Sprintf("%s.%s", m.prefix, metric), fmt.Sprintf("%v", value)})
+		m.csv.Flush()
+	}
 }
 
 // variables
 var met metrics
 
-func main() {
+func Main(keywords string) GlobalResult {
 	rand.Seed(time.Now().Unix())
 	// TODO constructor
 	result := &GlobalResult{
@@ -134,7 +117,6 @@ func main() {
 	}
 
 	// args
-	keywords := os.Args[1]
 	(*result).Keywords = keywords
 
 	fmt.Println("metrics sent to graphite (prefix: " + "DT.hackhaton.2018.adwords." + result.Device + "):")
@@ -151,6 +133,9 @@ func main() {
 		colly.AllowedDomains("google.com", "www.google.com"),
 		colly.UserAgent(userAgent),
 	)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
 
 	// handler for retrieving SEA links
 	c.OnHTML("body", func(body *colly.HTMLElement) {
@@ -302,6 +287,7 @@ func main() {
 			met.Send("seo."+domain, seo.Position)
 		}
 		fmt.Println("Finished", r.Request.URL)
+		wg.Done()
 	})
 
 	// build the request
@@ -319,6 +305,10 @@ func main() {
 	if err := c.Visit(URL.String()); err != nil {
 		panic(err)
 	}
+
+	// wait end of scrap. TODO add timeout
+	wg.Wait()
+	return *result
 }
 
 var osMobileStrings = []string{
