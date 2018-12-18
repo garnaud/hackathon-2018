@@ -7,9 +7,7 @@ import (
 	"math/rand"
 	"net/url"
 	"os"
-	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
@@ -18,20 +16,20 @@ import (
 	"github.com/mssola/user_agent"
 )
 
-// GlobalResult is exported to be parsed by json
-type GlobalResult struct {
-	Keywords    string         `json:"keywords"`
-	URL         string         `json:"url"`
-	UserAgent   string         `json:"userAgent"`
-	Device      string         `json:"mobile"`
-	SEOOui      int            `json:"seoOui"`
-	SEOFirstOui int            `json:"seoFirstOui"`
-	SEO         []googleResult `json:"seo"`
-	SEA         []googleResult `json:"sea"`
-	mutex       *sync.Mutex
+// Result is exported to be parsed by json
+type Result struct {
+	Keywords    string         `json:"keywords"`    // keywords used for requesting google
+	URL         string         `json:"url"`         // url used for requesting to google
+	UserAgent   string         `json:"userAgent"`   // user agent used for requesting to google
+	Device      string         `json:"mobile"`      // device from user agent ('mobile' or 'desktop')
+	SEOOui      int            `json:"seoOui"`      // counter of oui.sncf appearance at SEO results
+	SEOFirstOui int            `json:"seoFirstOui"` // position for the first oui.sncf SEO result
+	SEO         []searchResult `json:"seo"`         // all SEO results
+	SEA         []searchResult `json:"sea"`         // all SEA results
 }
 
-func (gr GlobalResult) Print() {
+// Print result to stdout
+func (gr Result) Print() {
 	fmt.Println("results:")
 	fmt.Printf("keywords: %s, url: %s, device: %s, user agent: %s\n", gr.Keywords, gr.URL, gr.Device, gr.UserAgent)
 	fmt.Println("sea:")
@@ -44,40 +42,23 @@ func (gr GlobalResult) Print() {
 	}
 }
 
-type googleResult struct {
+// searchResult store a parsed page result
+type searchResult struct {
 	Position    int    `json:"position"`
 	CSSSelector string `json:"cssSelector"`
 	Raw         string `json:"raw"`
 	Domain      string `json:"domain"`
 }
 
-func (gr *GlobalResult) exportToCSV() error {
-	t := time.Now()
-	file, err := os.Create("result.csv")
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
-	for _, value := range gr.SEA {
-		domain := strings.Replace(value.Domain, ".", "_", -1)
-		row := []string{t.Format("20060102150405"), "DT.hackhaton.2018.adwords." + gr.Device + ".sea." + domain, strconv.Itoa(value.Position)}
-		if err := writer.Write(row); err != nil {
-			return err // let's return errors if necessary, rather than having a one-size-fits-all error handler
-		}
-	}
-	return nil
-}
-
-type metrics struct {
+// Metrics store writer to graphite and csv
+type Metrics struct {
 	graphite *graphite.Graphite
 	csv      *csv.Writer
 	prefix   string
 }
 
-func NewMetrics(prefix string) metrics {
+// NewMetrics creates a new instance of metrics
+func NewMetrics(prefix string) Metrics {
 	// init graphite
 	var g *graphite.Graphite
 	if os.Getenv("MODE") == "prod" {
@@ -99,18 +80,20 @@ func NewMetrics(prefix string) metrics {
 			panic(err)
 		}
 	}
-	return metrics{
+	return Metrics{
 		graphite: g,
 		csv:      csv.NewWriter(file),
 		prefix:   prefix,
 	}
 }
 
-func (m *metrics) Close() {
+// Close writers used by metrics
+func (m *Metrics) Close() {
 	// TODO
 }
 
-func (m *metrics) Send(metric string, value interface{}) {
+// Send new metric to metrics (graphite and csv)
+func (m *Metrics) Send(metric string, value interface{}) {
 	t := time.Now()
 	// send to graphite
 	m.graphite.SimpleSend(metric, fmt.Sprintf("%v", value))
@@ -120,17 +103,16 @@ func (m *metrics) Send(metric string, value interface{}) {
 }
 
 // variables
-var met metrics
+var met Metrics
 
 func main() {
 	rand.Seed(time.Now().Unix())
 	// TODO constructor
-	result := &GlobalResult{
-		SEO:         make([]googleResult, 0),
-		SEA:         make([]googleResult, 0),
+	result := &Result{
+		SEO:         make([]searchResult, 0),
+		SEA:         make([]searchResult, 0),
 		SEOFirstOui: -1,
 		SEOOui:      0,
-		mutex:       &sync.Mutex{},
 	}
 
 	// args
@@ -168,7 +150,7 @@ func main() {
 					URL, err := url.ParseRequestURI(domain)
 					if err == nil {
 						// found domain of the promoted link
-						googleResult := googleResult{
+						googleResult := searchResult{
 							Position:    pos,
 							CSSSelector: "span",
 							Raw:         sibling.Text(),
@@ -181,7 +163,7 @@ func main() {
 					return true
 				})
 				if !found {
-					googleResult := googleResult{
+					googleResult := searchResult{
 						Position:    pos,
 						CSSSelector: "span",
 						Raw:         "not found",
@@ -218,7 +200,7 @@ func main() {
 				}
 
 				// found not promoted domain (seo)
-				googleResult := googleResult{
+				googleResult := searchResult{
 					Position:    pos,
 					CSSSelector: "div[id=ires]",
 					Raw:         span.Text,
@@ -226,7 +208,7 @@ func main() {
 				}
 				result.SEO = append(result.SEO, googleResult)
 			} else {
-				fmt.Errorf("can't parse span url %s\n:%v\n", span.Text, err)
+				fmt.Printf("can't parse span url %s\n:%v\n", span.Text, err)
 			}
 		})
 	})
@@ -355,7 +337,6 @@ func randDesktop() string {
 			return ua
 		}
 	}
-	return ""
 }
 
 func randMobile() string {
@@ -365,7 +346,6 @@ func randMobile() string {
 			return ua
 		}
 	}
-	return ""
 }
 
 var userAgents = []string{"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.79 Safari/537.36",
