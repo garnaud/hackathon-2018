@@ -123,10 +123,14 @@ func main() {
 
 	// build colly scrapper
 	var userAgent string
-	if os.Getenv("DEVICE") == "mobile" {
-		userAgent = randMobile()
-	} else {
-		userAgent = randDesktop()
+	userAgent, override := os.LookupEnv("USER_AGENT")
+
+	if !override {
+		if os.Getenv("DEVICE") == "mobile" {
+			userAgent = randMobile()
+		} else {
+			userAgent = randDesktop()
+		}
 	}
 	fmt.Printf("user agent found: %+v\n", userAgent)
 	c := colly.NewCollector(
@@ -301,33 +305,6 @@ func main() {
 	if err := c.Visit(URL.String()); err != nil {
 		panic(err)
 	}
-}
-
-var osMobileStrings = []string{
-	"Mozilla/5.0 (iPhone; CPU iPhone OS 10_3_1 like Mac OS X) AppleWebKit/603.1.30 (KHTML, like Gecko) Version/10.0 Mobile/14E304 Safari/602.1",
-	"Mozilla/5.0 (iPhone; CPU iPhone OS 10_3_1 like Mac OS X) AppleWebKit/603.1.30 (KHTML, like Gecko) Version/10.0 Mobile/14E304 Safari/602.1",
-	"Mozilla/5.0 (iPhone; CPU iPhone OS 10_3_1 like Mac OS X) AppleWebKit/603.1.30 (KHTML, like Gecko) Version/10.0 Mobile/14E304 Safari/602.1",
-	"Mozilla/5.0 (Linux; U; Android 4.4.2; en-us; SCH-I535 Build/KOT49H) AppleWebKit/534.30 (KHTML, like Gecko) Version/4.0 Mobile Safari/534.30",
-	"Mozilla/5.0 (Linux; Android 7.0; SM-G930V Build/NRD90M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/59.0.3071.125 Mobile Safari/537.36",
-	"Mozilla/5.0 (Android 7.0; Mobile; rv:54.0) Gecko/54.0 Firefox/54.0",
-	"Mozilla/5.0 (Android 7.0; Mobile; rv:54.0) Gecko/54.0 Firefox/54.0",
-	"Mozilla/5.0 (Android 7.0; Mobile; rv:54.0) Gecko/54.0 Firefox/54.0",
-	"Mozilla/5.0 (Linux; Android 7.0; SAMSUNG SM-G955U Build/NRD90M) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/5.4 Chrome/51.0.2704.106 Mobile Safari/537.36",
-	"Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.181 Mobile Safari/537.36",
-}
-
-var osDesktopStrings = []string{
-	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.181 Safari/537.3",
-	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10; rv:65.0.3325.146) Gecko/20100101 Firefox/65.0.3325.146",
-	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.146 Safari/537.36",
-	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.146 Safari/537.36",
-	"Mozilla/5.0 (Windows NT 10.0; rv:65.0.3325.146) Gecko/20100101 Firefox/65.0.3325.146",
-	"Mozilla/5.0 (Windows NT 5.1; rv:65.0.3325.146) Gecko/20100101 Firefox/65.0.3325.146",
-	"Mozilla/5.0 (Windows NT 6.1; WOW64; rv:65.0.3325.146) Gecko/20100101 Firefox/65.0.3325.146",
-	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.146 Safari/537.36",
-	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.146 Safari/537.36",
-	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.146 Safari/537.36",
-	"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.146 Safari/537.36",
 }
 
 func randDesktop() string {
